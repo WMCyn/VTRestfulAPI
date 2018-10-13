@@ -437,24 +437,13 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		if($checkModuleEntityExistence)
 		{
 			$db = PearDatabase::getInstance();
-                        
-                        if($this->module === 'Users'){
-                            $query = "select u.*, r.rolename
-                                    from vtiger_users u
-                                    left join vtiger_userscf cf on u.id = cf.usersid
-                                    inner join vtiger_user2role ur on ur.userid = u.id
-                                    inner join vtiger_role r on ur.roleid = r.roleid where u.id=?";
-                            $result = $db->pquery($query, array($id));
-                        }
-			else{
-                            $query = "SELECT * 
+			$query = "SELECT * 
 				FROM vtiger_crmentity CE
 				WHERE CE.deleted = 0
 				AND CE.setype LIKE ?
 				AND CE.crmid = ?";
+
 			$result = $db->pquery($query, array($this->module, $id));
-                        }
-                        
 			$count = $db->num_rows($result);
 		}
 
@@ -586,13 +575,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		$tableName = $moduleInstance->basetable;
 		$tableId = $moduleInstance->basetableid;
 
-                if($moduleName === 'Users'){
-                    $order = !empty($order) ? $order : 'u.user_name ASC';
-                }
-                else{
-                    $order = !empty($order) ? $order : 'CE.createdtime ASC';
-                }
-		
+		$order = !empty($order) ? $order : 'CE.createdtime ASC';
 
 		//Get criteria
 		$a_criteriaParams = array();
@@ -674,40 +657,27 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 				}
 			}
 		}
-                
-                if($moduleName === 'Users'){
-                    
-                    $query = "
-                                select u.*, r.rolename
-                                from vtiger_users u
-                                left join vtiger_userscf cf on u.id = cf.usersid
-                                inner join vtiger_user2role ur on ur.userid = u.id
-                                inner join vtiger_role r on ur.roleid = r.roleid ";
-                }
-                else{
-                    //Add SELECT clause
-                    $query = "SELECT T.$tableId AS id
-                                    FROM $tableName T ";				
 
-                    //Add JOIN clauses
-                    $query .= "INNER JOIN vtiger_crmentity CE ON CE.crmid = T.$tableId AND CE.deleted = 0 ";
-                    foreach($a_moduleTables as $table => $idField)
-                    {
-                            if($table != 'vtiger_crmentity')
-                            {
-                                    $query .= "LEFT JOIN $table ON $table.$idField = T.$tableId ";
-                            }
-                    }
-                }
+		//Add SELECT clause
+		$query = "SELECT T.$tableId AS id
+				FROM $tableName T ";				
 
-		
+		//Add JOIN clauses
+		$query .= "INNER JOIN vtiger_crmentity CE ON CE.crmid = T.$tableId AND CE.deleted = 0 ";
+		foreach($a_moduleTables as $table => $idField)
+		{
+			if($table != 'vtiger_crmentity')
+			{
+				$query .= "LEFT JOIN $table ON $table.$idField = T.$tableId ";
+			}
+		}
 
 		//Add WHERE, ORDERY BY, LIMIT clauses
 		$query .= "WHERE $criteriaQuery
 				ORDER BY $order
 				LIMIT $start, $length";
 
-                $db = PearDatabase::getInstance();
+		$db = PearDatabase::getInstance();
 		$result = $db->pquery($query, array($a_criteriaParams));
 
 		return $result;
