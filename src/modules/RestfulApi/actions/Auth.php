@@ -41,7 +41,8 @@ class RestFulApi_Auth_Action extends Vtiger_Action_Controller {
 		$this->loginAsUser($user_id);
 
 		//Generate a token
-		return $this->generateToken($user_id);
+                //return $this->generateToken($user_id);
+		return array('token' => $this->generateToken($user_id), 'userid' => $user_id);
 	}
 	
 	public function loginByKey($key)
@@ -67,7 +68,8 @@ class RestFulApi_Auth_Action extends Vtiger_Action_Controller {
 		$this->loginAsUser($user_id);
 				
 		//Generate a token
-		return $this->generateToken($user_id);
+		//return $this->generateToken($user_id);
+                return array('token' => $this->generateToken($user_id), 'userid' => $user_id);
 	}
 
 	protected function loginAsUser($user_id)
