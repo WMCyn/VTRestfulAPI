@@ -86,7 +86,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		}
 		elseif(is_array($m_result) && isset($m_result["success"]) && $m_result["success"] === false)
 		{
-			$this->response($m_result, 200, true); //OK with error
+			//$this->response($m_result, 200, true); //OK with error
+			$this->response($m_result["error"], 200, true); //OK with error
 		}
 		else
 		{
@@ -146,7 +147,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 			
 			if($m_result["success"] === false)
 			{
-				$error = $m_result;
+                            // Retrieve message inside 'error' key 
+                            $error = $m_result["error"];
 			}
 			else
 			{
