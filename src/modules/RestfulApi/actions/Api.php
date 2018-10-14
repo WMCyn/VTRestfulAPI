@@ -470,7 +470,39 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 			}
 
 			$m_result = $focus->column_fields;
-			$m_result["api_date_now"] = date("Y-m-d H:i:s"); //Added to control the serveur hour
+                        
+                        $db = PearDatabase::getInstance();
+
+                        // Add support for documents
+                        $res = $db->pquery(
+                                "select n.notesid, note_no, n.title, filename, notecontent, folderid, filetype, 
+                                    filesize, u.first_name, u.last_name, c.createdtime,c.modifiedtime, c.smownerid
+                                    from vtiger_senotesrel as r 
+                                    inner join vtiger_crmentity as c on r.notesid = c.crmid inner 
+                                    join vtiger_notes as n on c.crmid = n.notesid and setype='Documents' and c.deleted=0
+                                    inner join vtiger_users as u on u.id = c.smownerid
+                                    where r.crmid=?", array($id));
+
+                        $m_result["documents"] = array();
+                        while($row = $db->fetchByAssoc($res))
+                        {
+                            $m_result["documents"][] = $row;
+                        }
+
+                        // // Add support for comments
+                        $res = $db->pquery(
+                                "select distinct modcommentsid,commentcontent, c.smownerid, u.first_name, u.last_name, c.createdtime,c.modifiedtime, c.smownerid
+                                 from vtiger_crmentity as c inner join vtiger_modcomments as n on c.crmid = n.modcommentsid  
+                                 and setype='ModComments' and c.deleted=0 and related_to=? 
+                                 inner join vtiger_users as u on u.id = c.smownerid
+                                 order by modcommentsid asc", array($id));
+                        $m_result["comments"] = array();
+                        while($row = $db->fetchByAssoc($res))
+                        {
+                            $m_result["comments"][] = $row;
+                        }
+
+                        $m_result["api_date_now"] = date("Y-m-d H:i:s"); //Added to control the serveur hour
 		}
 
 		return $m_result;
