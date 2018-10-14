@@ -501,6 +501,19 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                         {
                             $m_result["comments"][] = $row;
                         }
+                        
+                        // Add support for activity
+                        $res = $db->pquery("select a.*
+                                from vtiger_crmentityrel r
+                                inner join vtiger_crmentity d on r.relcrmid = d.crmid and d.deleted = 0
+                                inner JOIN vtiger_activity a on a.activityid = r.relcrmid and r.relmodule='Calendar'
+                                where r.crmid = ?", array($id));
+                        
+                         $m_result["activity"] = array();
+                        while($row = $db->fetchByAssoc($res))
+                        {
+                            $m_result["activity"][] = $row;
+                        }
 
                         $m_result["api_date_now"] = date("Y-m-d H:i:s"); //Added to control the serveur hour
 		}
