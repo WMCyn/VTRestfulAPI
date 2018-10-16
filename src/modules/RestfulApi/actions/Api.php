@@ -162,7 +162,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 	}
 
 	protected function _getRequestAction(Vtiger_Request $request)
-	{		
+	{	
 		switch($this->get_request_method())
 		{
 			//CRUD
@@ -189,6 +189,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 					$this->action = null;
 				break;
 		}
+
 	}
 
 	protected function _getRequestParams(Vtiger_Request $request)
@@ -267,8 +268,13 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 				//CRUD
 
 				case 'Create': //C
-						$m_result = $this->_createItem();
-					break;
+                                                if($this->module === 'Documents'){
+                                                    $m_result = $this->_createDocument();
+                                                }
+                                                else{
+                                                    $m_result = $this->_createItem();
+                                                }
+						break;
 
 				case 'Retrieve': //R
 						$id 					= !empty($this->a_params["id"]) 			? $this->a_params["id"] 			: null;
@@ -316,6 +322,119 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
 		return $m_result;
 	}
+        
+    protected function base64url_encode($data) { 
+      return rtrim(strtr(base64_encode($data), '+/', '-_'), '='); 
+    } 
+    protected function base64url_decode($data) { 
+      return base64_decode(str_pad(strtr($data, '-_', '+/'), strlen($data) % 4, '=', STR_PAD_RIGHT)); 
+    } 
+    
+    protected function getMIMEType($filename) {
+        $finfo = finfo_open();
+        $fileinfo = finfo_file($finfo, $filename, FILEINFO_MIME_TYPE);
+        finfo_close($finfo);
+        return $fileinfo;
+    }
+
+    public function _createDocument() {
+
+        global $adb, $log;
+        global $root_directory, $upload_badext;
+
+        $input_array = $this->a_params;
+
+        $log->debug("Entering function _createDocument");
+        $log->debug("INPUT ARRAY for the function _createDocument");
+        //$log->debug(print_r($input_array), true);
+	//$log->debug(json_encode($this->a_params));
+                
+        $ticketid = $input_array['parentid'];
+        $filename = $input_array['filename'];
+       // 
+        $filesize = $input_array['filesize'];
+        $folderid = intval($input_array['folderid'])>0 ? intval($input_array['folderid'])  : 1;
+        $filecontents = $input_array['filecontents'];
+        $assigned_user_id = $input_array['assigned_user_id'];
+        
+        if(!isset($assigned_user_id)){
+            throw  new Exception('NO_ASSIGNED_USER');
+        }
+
+        //decide the file path where we should upload the file in the server
+        $upload_filepath = Vtiger_Functions::initStorageFileDirectory();
+        $log->debug("upload_filepath is $upload_filepath");
+
+        $attachmentid = $adb->getUniqueID("vtiger_crmentity");
+
+        //fix for space in file name
+        $filename = sanitizeUploadFileName($filename, $upload_badext);
+        $new_filename = $attachmentid . '_' . $filename;
+        $log->debug("new_filename is $new_filename");
+
+        $data = $this->base64url_decode($filecontents);
+        //$description = 'CustomerPortal Attachment';
+
+        //write a file with the passed content
+        $handle = @fopen($upload_filepath . $new_filename, 'w');
+        fputs($handle, $data);
+        fclose($handle);
+        
+        $filetype = $this->getMIMEType($upload_filepath . $new_filename);
+
+        //Now store this file information in db and relate with the ticket
+        $date_var = $adb->formatDate(date('Y-m-d H:i:s'), true);
+        
+        // Creo il documento
+        require_once('modules/Documents/Documents.php');
+        $focus = new Documents();
+        $focus->column_fields['notes_title'] = $filename;
+        $focus->column_fields['filename'] = $filename;
+        $focus->column_fields['filetype'] = $filetype;
+        $focus->column_fields['filesize'] = $filesize;
+        $focus->column_fields['filelocationtype'] = 'I';
+        $focus->column_fields['filedownloadcount'] = 0;
+        $focus->column_fields['filestatus'] = 1;
+        $focus->column_fields['assigned_user_id'] = $assigned_user_id;
+        $focus->column_fields['folderid'] = $folderid;
+        $focus->parent_id = $ticketid;
+        $focus->save('Documents');
+
+        // ------------ 1a CREATE ATTACHMENT
+        $crmquery = "INSERT INTO `vtiger_crmentity` (`crmid`, `smcreatorid`, `smownerid`, `modifiedby`, 
+            `setype`, `description`, `createdtime`, `modifiedtime`,
+            `version`, `presence`, `deleted`) 
+            VALUES (?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+        $crmresult = $adb->pquery($crmquery, 
+                array($attachmentid, $assigned_user_id, $assigned_user_id, $assigned_user_id,
+                'Documents Attachment', $filename, $date_var,$date_var,
+                0, 1,0
+            ));
+        if($crmresult === FALSE){
+            throw new Exception($adb->database->ErrorMsg(), $adb->database->ErrorNo());
+        }
+        
+        // ------------ 1b CREATE ATTACHEMENT
+        $attachmentquery = "insert into vtiger_attachments(attachmentsid,name,description,type,path) values(?,?,?,?,?)";
+        $res = $adb->pquery($attachmentquery, 
+                array($attachmentid, $filename, $filename, $filetype, $upload_filepath));
+
+        //$relatedquery = "insert into vtiger_seattachmentsrel values(?,?)";
+        //$relatedresult = $adb->pquery($relatedquery, array($ticketid, $attachmentid));
+       
+        // ------------ 2 relate attachment with document
+        $related_doc = 'insert into vtiger_seattachmentsrel(crmid,attachmentsid) values (?,?)';
+        $res = $adb->pquery($related_doc, array($focus->id, $attachmentid));
+
+        // ----------- 3 relate document with parent entity
+        $senotesrel = 'insert into vtiger_senotesrel(crmid, notesid) values(?,?)';
+        $res = $adb->pquery($senotesrel, array($ticketid, $focus->id));
+        
+        $log->debug("Exiting function _createDocument new record id = " . $focus->id);
+        
+        return $focus->id;
+    }
 
 	//Create
 	public function _createItem()
@@ -431,7 +550,12 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 	{
 		$m_result = null;
 
-		require_once("modules/{$this->module}/{$this->module}.php");
+                if($this->module === 'Calendar'){
+                    require_once("modules/Calendar/Activity.php");
+                }
+                else{
+                    require_once("modules/{$this->module}/{$this->module}.php");
+                }
 		
 		//Check if an entity exists for the module and the id
 		if($checkModuleEntityExistence)
@@ -736,12 +860,14 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
                     //Add JOIN clauses
                     $query .= "INNER JOIN vtiger_crmentity CE ON CE.crmid = T.$tableId AND CE.deleted = 0 ";
-                    foreach($a_moduleTables as $table => $idField)
-                    {
-                            if($table != 'vtiger_crmentity')
-                            {
-                                    $query .= "LEFT JOIN $table ON $table.$idField = T.$tableId ";
-                            }
+                    if(count($a_moduleTables)>0){
+                        foreach($a_moduleTables as $table => $idField)
+                        {
+                                if($table != 'vtiger_crmentity')
+                                {
+                                        $query .= "LEFT JOIN $table ON $table.$idField = T.$tableId ";
+                                }
+                        }
                     }
                 }
 
@@ -751,7 +877,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		$query .= "WHERE $criteriaQuery
 				ORDER BY $order
 				LIMIT $start, $length";
-
+echo $query;
                 $db = PearDatabase::getInstance();
 		$result = $db->pquery($query, array($a_criteriaParams));
 
