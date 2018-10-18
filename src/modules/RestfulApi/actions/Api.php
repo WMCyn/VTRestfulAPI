@@ -570,6 +570,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                                     inner join vtiger_role r on ur.roleid = r.roleid where u.id=?";
                             $result = $db->pquery($query, array($id));
                         }
+                        
 			else{
                             $query = "SELECT * 
 				FROM vtiger_crmentity CE
@@ -596,6 +597,30 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 			$m_result = $focus->column_fields;
                         
                         $db = PearDatabase::getInstance();
+                        
+                        /*
+                         * If module is Documents then retrieve filecontents and file type
+                         */
+                        if($this->module == 'Documents'){
+
+                            $db = PearDatabase::getInstance();
+
+                            $res = $db->pquery("select rel.attachmentsid ,path, name , type 
+                                    from vtiger_attachments as a
+                                    inner join vtiger_seattachmentsrel as rel on rel.attachmentsid = a.attachmentsid
+                                    where crmid=?", array($id));
+                            $m_result["filecontent"] ='';
+                            while($row = $db->fetchByAssoc($res))
+                            {
+                                global $root_directory;
+                               
+                                $m_result['filetype'] = $row['type'];
+                                $m_result["filecontent"] = $this->base64url_encode(file_get_contents($root_directory .$row['path'] . $row['attachmentsid'] .'_'. $row['name']));
+                            }
+                            
+                            
+
+                        }
 
                         // Add support for documents
                         $res = $db->pquery(
