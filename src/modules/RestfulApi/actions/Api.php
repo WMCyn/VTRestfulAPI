@@ -603,7 +603,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                          */
                         if($this->module == 'Documents'){
 
-                            $db = PearDatabase::getInstance();
+                           // $db = PearDatabase::getInstance();
 
                             $res = $db->pquery("select rel.attachmentsid ,path, name , type 
                                     from vtiger_attachments as a
@@ -612,10 +612,12 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                             $m_result["filecontent"] ='';
                             while($row = $db->fetchByAssoc($res))
                             {
-                                global $root_directory;
+                                global $root_directory, $site_URL;
                                
                                 $m_result['filetype'] = $row['type'];
-                                $m_result["filecontent"] = $this->base64url_encode(file_get_contents($root_directory .$row['path'] . $row['attachmentsid'] .'_'. $row['name']));
+                                $m_result["fileurl"] = $site_URL . '/'.$row['path'] . $row['attachmentsid'] .'_'. $row['name'];
+                                $m_result["filepos"] = $root_directory . $row['path'] . $row['attachmentsid'] .'_'. $row['name'];
+                                //$m_result["filecontent"] = $this->base64url_encode(file_get_contents($root_directory .$row['path'] . $row['attachmentsid'] .'_'. $row['name']));
                             }
                             
                             
@@ -768,6 +770,10 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
 	protected function _doRetrieveQuery($start=0, $length=20, $criteriaList='', $order='')
 	{
+                global $log;
+                
+                $log->debug("_doRetrieveQuery with input parameters start = $start, length = $length, criteriaList = $criteriaList, order $order");
+                
 		//Get module database data
 		require_once("modules/{$this->module}/{$this->module}.php");
 
@@ -902,7 +908,12 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		$query .= "WHERE $criteriaQuery
 				ORDER BY $order
 				LIMIT $start, $length";
-echo $query;
+                
+                // Show in log query
+                $logMsg = "_doRetrieveQuery $query with params " . print_r(array($a_criteriaParams), true);
+                //echo $logMsg;
+                $log->debug($logMsg);
+                
                 $db = PearDatabase::getInstance();
 		$result = $db->pquery($query, array($a_criteriaParams));
 
