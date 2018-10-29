@@ -298,7 +298,17 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 						else
 						{
 							//Multiples items
-							$m_result = $this->_retrieveItems($start, $length, $criteria, $order);
+                                                        if($this->module === 'ModTracker'){
+                                                            $db = PearDatabase::getInstance();
+                                                            $res  = $this->_doRetrieveQuery($start, $length, $criteria, $order);
+                                                            while($row = $db->fetchByAssoc($res)){
+                                                                $m_result[] = $row;
+                                                            }
+                                                          
+                                                        }
+                                                        else{
+                                                            $m_result = $this->_retrieveItems($start, $length, $criteria, $order);
+                                                        }
 						}
 					break;
 				
@@ -571,6 +581,26 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                             $result = $db->pquery($query, array($id));
                         }
                         
+                        else if($this->module === 'ModTracker'){
+                            $query = "SELECT
+                                        T.id,T.crmid,T.module,T.whodid,T.changedon,T. STATUS,fieldname,prevalue,postvalue
+                                        FROM
+                                        vtiger_modtracker_basic T
+                                        INNER JOIN vtiger_modtracker_detail d ON T.id = d.id
+                                        INNER JOIN vtiger_crmentity CE ON CE.crmid = T.crmid
+                                        AND CE.deleted = 0
+                                        AND CE.setype <> 'RestfulApi'
+                                        AND T.module <> 'RestfulApi' where T.crmid = ?";
+                            $result = $db->pquery($query, array($id));
+                            while($row = $db->fetchByAssoc($result))
+                            {                      
+                                $m_result [] = $row;
+                                //Added to control the serveur hour
+                            } 
+                            $m_result["api_date_now"] = date("Y-m-d H:i:s");
+                            return $m_result;
+                        }
+                                                
 			else{
                             $query = "SELECT * 
 				FROM vtiger_crmentity CE
@@ -789,6 +819,9 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                 if($moduleName === 'Users'){
                     $order = !empty($order) ? $order : 'u.user_name ASC';
                 }
+                else if($moduleName === 'ModTracker'){
+                    $order = !empty($order) ? $order : 'T.changedon DESC';
+                }
                 else{
                     $order = !empty($order) ? $order : 'CE.createdtime ASC';
                 }
@@ -884,6 +917,15 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                                 inner join vtiger_user2role ur on ur.userid = u.id
                                 inner join vtiger_role r on ur.roleid = r.roleid ";
                 }
+                // If request modtracker
+                else if($this->module === 'ModTracker'){
+                            $query =   "select
+                                        T.id, T.crmid, T.module, T.whodid, T.changedon, T.status, fieldname, prevalue, postvalue
+                                        from vtiger_modtracker_basic T
+                                        inner join vtiger_modtracker_detail d  on T.id = d.id
+                                        inner join vtiger_crmentity CE on CE.crmid = T.crmid and CE.deleted = 0 
+                                        and CE.setype <>'RestfulApi' and T.module <>'RestfulApi' ";
+                }
                 else{
                     //Add SELECT clause
                     $query = "SELECT T.$tableId AS id
@@ -910,8 +952,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 				LIMIT $start, $length";
                 
                 // Show in log query
-                $logMsg = "_doRetrieveQuery $query with params " . print_r(array($a_criteriaParams), true);
-                //echo $logMsg;
+                $logMsg = "_doRetrieveQuery $query ?? " . print_r(array($a_criteriaParams), true);
+                echo $logMsg;
                 $log->debug($logMsg);
                 
                 $db = PearDatabase::getInstance();
