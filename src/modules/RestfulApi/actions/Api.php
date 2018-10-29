@@ -887,6 +887,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 						
 						case 'like':
 								$operator = 'LIKE';
+                                                                break;
 
 						case 'eq':
 						default:
