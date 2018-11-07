@@ -255,7 +255,12 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
 	protected function _callModuleAction()
 	{
-		$moduleInstance = Vtiger_Module::getInstance($this->module);
+                if($this->isVCQMod($this->module)){
+                    $moduleInstance = Vtiger_Module::getInstance('RestfulApi');
+                }
+                else{
+                    $moduleInstance = Vtiger_Module::getInstance($this->module);
+                }
 
 		if(empty($moduleInstance))
 		{
@@ -298,9 +303,11 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 						else
 						{
 							//Multiples items
-                                                        if($this->module === 'ModTracker'){
+                                                        if($this->module === 'ModTracker' || $this->isVCQMod($this->module)){
                                                             $db = PearDatabase::getInstance();
+                                                            
                                                             $res  = $this->_doRetrieveQuery($start, $length, $criteria, $order);
+
                                                             while($row = $db->fetchByAssoc($res)){
                                                                 $m_result[] = $row;
                                                             }
@@ -537,9 +544,16 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 	//Retrieve multiple
 	protected function _retrieveItems($start=0, $length=20, $criteriaList='', $order='')
 	{
-		$a_items = array();		
+		$a_items = array();
 		
 		$result = $this->_doRetrieveQuery($start, $length, $criteriaList, $order);
+                
+		// If is VCQ (vtiger custom query) return result of query
+		if($this->isVCQMod($moduleName) == true){
+		   $result["api_date_now"] = date("Y-m-d H:i:s"); 
+		   return $result;
+		}
+
 
 		$db = PearDatabase::getInstance();
 		while($row = $db->fetchByAssoc($result))
@@ -797,34 +811,52 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
 		return $b_deleted;
 	}
+        
+        /**
+         * Check if module is a customQuery
+         * @param string $moduleName Module Name
+         * @return boolean true if module is VCQ, false otherwise
+         */
+        protected function isVCQMod($moduleName){
+            return (substr($moduleName, 0, 3) === "VCQ");
+        }
 
 	protected function _doRetrieveQuery($start=0, $length=20, $criteriaList='', $order='')
 	{
                 global $log;
-                
+                $moduleName = $this->module;
+               
                 $log->debug("_doRetrieveQuery with input parameters start = $start, length = $length, criteriaList = $criteriaList, order $order");
+               // echo "_doRetrieveQuery with input parameters start = $start, length = $length, criteriaList = $criteriaList, order $order";
+              if($this->isVCQMod($moduleName) == false){
+                //Get module database data
+				require_once("modules/{$this->module}/{$this->module}.php");
+
+				$moduleName = $this->module;
+				$o_module = new $moduleName();
+				$a_moduleTables = $o_module->tab_name_index; //List of used tables
+
+				$moduleInstance = Vtiger_Module::getInstance($this->module);
+
+				$tableName = $moduleInstance->basetable;
+				$tableId = $moduleInstance->basetableid;
+
+				if($moduleName === 'Users'){
+					$order = !empty($order) ? $order : 'u.user_name ASC';
+				}
+				else if($moduleName === 'ModTracker'){
+					$order = !empty($order) ? $order : 'T.changedon DESC';
+				}
+				else{
+					$order = !empty($order) ? $order : 'CE.createdtime ASC';
+				}
+            }
                 
-		//Get module database data
-		require_once("modules/{$this->module}/{$this->module}.php");
-
-		$moduleName = $this->module;
-		$o_module = new $moduleName();
-		$a_moduleTables = $o_module->tab_name_index; //List of used tables
-
-		$moduleInstance = Vtiger_Module::getInstance($this->module);
-		
-		$tableName = $moduleInstance->basetable;
-		$tableId = $moduleInstance->basetableid;
-
-                if($moduleName === 'Users'){
-                    $order = !empty($order) ? $order : 'u.user_name ASC';
-                }
-                else if($moduleName === 'ModTracker'){
-                    $order = !empty($order) ? $order : 'T.changedon DESC';
-                }
-                else{
-                    $order = !empty($order) ? $order : 'CE.createdtime ASC';
-                }
+			if($this->isVCQMod($moduleName) == true){
+				$order = !empty($order) ? $order : '1 ASC';
+			}
+                
+               
 		
 
 		//Get criteria
@@ -927,6 +959,13 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                                         inner join vtiger_crmentity CE on CE.crmid = T.crmid and CE.deleted = 0 
                                         and CE.setype <>'RestfulApi' and T.module <>'RestfulApi' ";
                 }
+                
+                else if($this->isVCQMod($this->module)){   
+                    global $root_directory;
+                    $path = $root_directory . '/modules/RestfulApi/vcq/';
+                    $query = file_get_contents($path . strtolower($this->module).'.sql');
+                }
+                
                 else{
                     //Add SELECT clause
                     $query = "SELECT T.$tableId AS id
@@ -948,16 +987,16 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		
 
 		//Add WHERE, ORDERY BY, LIMIT clauses
-		$query .= "WHERE $criteriaQuery
+		$query .= " WHERE $criteriaQuery
 				ORDER BY $order
 				LIMIT $start, $length";
                 
-                // Show in log query
-                $logMsg = "_doRetrieveQuery $query ?? " . print_r(array($a_criteriaParams), true);
-                echo $logMsg;
-                $log->debug($logMsg);
-                
-                $db = PearDatabase::getInstance();
+		// Show in log query
+		$logMsg = "_doRetrieveQuery $query ## " . print_r($a_criteriaParams, true);
+		//echo $logMsg;
+		$log->debug($logMsg);
+		
+		$db = PearDatabase::getInstance();
 		$result = $db->pquery($query, array($a_criteriaParams));
 
 		return $result;
@@ -999,7 +1038,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		}
 		else
 		{
-			include("languages/fr_fr/Vtiger.php");
+			include("languages/it_it/Vtiger.php");
 		}
 
         $a_translations = array_merge($languageStrings, $jsLanguageStrings);
