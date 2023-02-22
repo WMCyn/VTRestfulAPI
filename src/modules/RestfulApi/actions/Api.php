@@ -607,10 +607,15 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                         if($this->module === 'Users'){
                             $query = "select u.*, r.rolename
                                     from vtiger_users u
+                                    inner join vtiger_user2role ur on ur.userid = u.id
+                                    inner join vtiger_role r on ur.roleid = r.roleid where u.id=?";
+/*                            $query = "select u.*, r.rolename
+                                    from vtiger_users u
                                     left join vtiger_userscf cf on u.id = cf.usersid
                                     inner join vtiger_user2role ur on ur.userid = u.id
                                     inner join vtiger_role r on ur.roleid = r.roleid where u.id=?";
-                            $result = $db->pquery($query, array($id));
+*/
+							 $result = $db->pquery($query, array($id));
                         }
                         
                         else if($this->module === 'ModTracker'){
@@ -967,9 +972,15 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                     $query = "
                                 select u.*, r.rolename
                                 from vtiger_users u
+                                inner join vtiger_user2role ur on ur.userid = u.id
+                                inner join vtiger_role r on ur.roleid = r.roleid ";
+/*                    $query = "
+                                select u.*, r.rolename
+                                from vtiger_users u
                                 left join vtiger_userscf cf on u.id = cf.usersid
                                 inner join vtiger_user2role ur on ur.userid = u.id
                                 inner join vtiger_role r on ur.roleid = r.roleid ";
+*/                                
                 }
                 // If request modtracker
                 else if($this->module === 'ModTracker'){
