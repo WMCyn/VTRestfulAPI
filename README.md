@@ -2,6 +2,8 @@
 
 RestfulApi is a Vtiger module which allows to communicate with your CRM using a REST API.
 
+This version fixed to make it work in 7.4
+
 ## Installation
 
 Simply install RestfulApi like a classic Vtiger module.
