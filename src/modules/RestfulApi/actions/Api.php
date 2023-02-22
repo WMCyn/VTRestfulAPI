@@ -51,7 +51,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 	}
 	
 	public function process(Vtiger_Request $request)
-	{	
+	{
+    global $log;
 		//PreProcess
 		$this->preProcess($request);
 
@@ -73,7 +74,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		{
 			$this->response("", 406);
 		}
-		
+		$log->debug('m_result:'.print_r($m_result,true)."\r\n");
 		//PostProcess
 		$this->postProcess($m_result);
 	}
@@ -194,6 +195,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
 	protected function _getRequestParams(Vtiger_Request $request)
 	{
+    global $log;
+    $log->debug('_getRequestParams: request:'.print_r($request,true)."\r\n");
 		$this->a_params = array();			
 		foreach($this->_request as $key => $val)
 		{
@@ -221,7 +224,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 				$this->action = $val;
 			}
 		}
-				
+	$log->debug('_getRequestParams: this->a_params:'.print_r($this->a_params,true)."\r\n");
+		
 		if($this->action == 'Update' || $this->action == 'Delete')
 		{
 			if($request->has("id"))
@@ -284,11 +288,12 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 				case 'Retrieve': //R
 						$id 					= !empty($this->a_params["id"]) 			? $this->a_params["id"] 			: null;
 						$start 					= !empty($this->a_params["start"]) 			? $this->a_params["start"] 			: 0;
-						$length 				= !empty($this->a_params["length"]) 		? $this->a_params["length"]			: 20;
+						$length 				= !empty($this->a_params["length"]) 		? $this->a_params["length"]			: 20000;
 						$order 					= !empty($this->a_params["order"]) 			? $this->a_params["order"]			: '';
 						$criteria 				= !empty($this->a_params["criteria"]) 		? $this->a_params["criteria"]		: '';
 						$picklist 				= !empty($this->a_params["picklist"]) 		? $this->a_params["picklist"]		: '';
 						$picklistDependencies 	= !empty($this->a_params["picklistdep"]) 	? $this->a_params["picklistdep"] 	: false;
+            			$relatedid				= !empty($this->a_params["relatedid"]) 		? $this->a_params["relatedid"]		: null;
 
 						if(!empty($id))
 						{
@@ -314,7 +319,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                                                           
                                                         }
                                                         else{
-                                                            $m_result = $this->_retrieveItems($start, $length, $criteria, $order);
+                                                            $m_result = $this->_retrieveItems($start, $length, $criteria, $order,$relatedid);
                                                         }
 						}
 					break;
@@ -360,18 +365,24 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
         global $root_directory, $upload_badext;
 
         $input_array = $this->a_params;
+    	if(!empty($_FILES) && count($_FILES)) {
+			$_FILES = Vtiger_Util_Helper::transformUploadedFiles($_FILES, true);
+		}
+
 
         $log->debug("Entering function _createDocument");
         $log->debug("INPUT ARRAY for the function _createDocument");
+        $log->debug('_createdocument: _FILES:'.print_r($_FILES,true)."\r\n");
+
         //$log->debug(print_r($input_array), true);
 	//$log->debug(json_encode($this->a_params));
                 
         $ticketid = $input_array['parentid'];
-        $filename = $input_array['filename'];
+        $filename = $_FILES['file']['name'];						//$input_array['filename'];
        // 
-        $filesize = $input_array['filesize'];
+        $filesize = $_FILES['file']['size'];						//$input_array['filesize'];
         $folderid = intval($input_array['folderid'])>0 ? intval($input_array['folderid'])  : 1;
-        $filecontents = $input_array['filecontents'];
+        $filetmp = $_FILES['file']['tmp_name'];						//$input_array['filecontents'];
         $assigned_user_id = $input_array['assigned_user_id'];
         
         if(!isset($assigned_user_id)){
@@ -386,18 +397,22 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
         //fix for space in file name
         $filename = sanitizeUploadFileName($filename, $upload_badext);
-        $new_filename = $attachmentid . '_' . $filename;
+    	$encryptFileName = Vtiger_Util_Helper::getEncryptedFileName($filename);
+        $new_filename = $attachmentid . '_' . $encryptFileName;
         $log->debug("new_filename is $new_filename");
 
-        $data = $this->base64url_decode($filecontents);
+    
+ 		//file is a tmp file, move to storage
+    	move_uploaded_file($filetmp, $upload_filepath . $new_filename);
+        //$data = $this->base64url_decode($filecontents);
         //$description = 'CustomerPortal Attachment';
 
         //write a file with the passed content
-        $handle = @fopen($upload_filepath . $new_filename, 'w');
-        fputs($handle, $data);
-        fclose($handle);
+        //$handle = @fopen($upload_filepath . $new_filename, 'w');
+        //fputs($handle, $data);
+        //fclose($handle);
         
-        $filetype = $this->getMIMEType($upload_filepath . $new_filename);
+        $filetype = $this->getMIMEType($upload_filepath . $encryptFileName);
 
         //Now store this file information in db and relate with the ticket
         $date_var = $adb->formatDate(date('Y-m-d H:i:s'), true);
@@ -433,9 +448,9 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
         }
         
         // ------------ 1b CREATE ATTACHEMENT
-        $attachmentquery = "insert into vtiger_attachments(attachmentsid,name,description,type,path) values(?,?,?,?,?)";
+        $attachmentquery = "insert into vtiger_attachments(attachmentsid,name,description,type,path,storedname) values(?,?,?,?,?,?)";
         $res = $adb->pquery($attachmentquery, 
-                array($attachmentid, $filename, $filename, $filetype, $upload_filepath));
+                array($attachmentid, $filename, $filename, $filetype, $upload_filepath,$encryptFileName));
 
         //$relatedquery = "insert into vtiger_seattachmentsrel values(?,?)";
         //$relatedresult = $adb->pquery($relatedquery, array($ticketid, $attachmentid));
@@ -463,6 +478,8 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 		$focus->mode = '';
 
 		//Set item data
+    global $log;
+    $log->debug("Focus: $this->module ".print_r($focus,true)."\r\n");
 		$this->_setItemData($focus);
 
 		if($this->_isInventory() && !empty($this->a_params["items"]))
@@ -542,11 +559,11 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
     }
 
 	//Retrieve multiple
-	protected function _retrieveItems($start=0, $length=20, $criteriaList='', $order='')
+	protected function _retrieveItems($start=0, $length=20, $criteriaList='', $order='',$relatedid = null)
 	{
 		$a_items = array();
 		
-		$result = $this->_doRetrieveQuery($start, $length, $criteriaList, $order);
+		$result = $this->_doRetrieveQuery($start, $length, $criteriaList, $order,$relatedid);
                 
 		// If is VCQ (vtiger custom query) return result of query
 		if($this->isVCQMod($moduleName) == true){
@@ -572,6 +589,7 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 	//Retrieve unique
 	protected function _retrieveItem($id, $checkModuleEntityExistence=true)
 	{
+    global $log;
 		$m_result = null;
 
                 if($this->module === 'Calendar'){
@@ -627,18 +645,21 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 			$count = $db->num_rows($result);
 		}
 
+    $log->debug("restapi count: $count : ".print_r($result,true)."\r\n");
 		//If entity exists, retrieve info
 		if(!$checkModuleEntityExistence || $count > 0)
 		{
 			$focus = CRMEntity::getInstance($this->module);
+    $log->debug("Focus: $this->module ".print_r($focus,true)."\r\n");
+
 			$focus->retrieve_entity_info($id, $this->module);
 
-			foreach($focus->column_fields as &$field)
+			foreach($focus->column_fields->getColumnFields() as &$field)
 			{
 				$field = vtlib_purify($field);
 			}
 
-			$m_result = $focus->column_fields;
+			$m_result = $focus->column_fields->getColumnFields();
                         
                         $db = PearDatabase::getInstance();
                         
@@ -821,12 +842,12 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
             return (substr($moduleName, 0, 3) === "VCQ");
         }
 
-	protected function _doRetrieveQuery($start=0, $length=20, $criteriaList='', $order='')
+	protected function _doRetrieveQuery($start=0, $length=20, $criteriaList='', $order='', $relatedid = null)
 	{
                 global $log;
                 $moduleName = $this->module;
                
-                $log->debug("_doRetrieveQuery with input parameters start = $start, length = $length, criteriaList = $criteriaList, order $order");
+                $log->debug("_doRetrieveQuery with input parameters start = $start, length = $length, criteriaList = $criteriaList, order $order, modulename:$moduleName , relatedid:$relatedid");
                // echo "_doRetrieveQuery with input parameters start = $start, length = $length, criteriaList = $criteriaList, order $order";
               if($this->isVCQMod($moduleName) == false){
                 //Get module database data
@@ -965,10 +986,27 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
                     $path = $root_directory . '/modules/RestfulApi/vcq/';
                     $query = file_get_contents($path . strtolower($this->module).'.sql');
                 }
+                else if($this->module === 'VTEItems' && isset($relatedid)){
+                	$query = "SELECT DISTINCT 
+  								CE.crmid AS 'id',
+  								vtiger_vteitems.productid,
+  								vtiger_vteitems.related_to,
+  								vtiger_vteitems.quantity,
+  								vtiger_vteitems.listprice,
+  								CE.createdtime 
+							FROM
+  								vtiger_vteitems 
+  							INNER JOIN vtiger_crmentity CE ON CE.crmid = vtiger_vteitems.vteitemid 
+  							LEFT JOIN vtiger_vteitemscf ON vtiger_vteitemscf.vteitemid = vtiger_vteitems.vteitemid 
+  							INNER JOIN vtiger_quotes AS vtiger_quotesQuotes ON vtiger_quotesQuotes.quoteid = vtiger_vteitems.related_to";
+                	$criteriaQuery = "CE.deleted = 0 AND vtiger_quotesQuotes.quoteid = ?";
+                    $a_criteriaParams = array($relatedid); 
                 
+                
+                }
                 else{
                     //Add SELECT clause
-                    $query = "SELECT T.$tableId AS id
+                    $query = "SELECT DISTINCT T.$tableId AS id
                                     FROM $tableName T ";				
 
                     //Add JOIN clauses
@@ -1004,6 +1042,10 @@ class RestfulApi_Api_Action extends RestFulApi_Rest_Model
 
 	protected function _setItemData(&$focus)
 	{
+    global $log;
+    $log->debug("_setItemData: ".print_r($focus->column_fields,true)."\r\n");
+    $log->debug("_setItemData aparams: ".print_r($this->a_params,true)."\r\n");
+    
 		foreach($this->a_params as $fieldName => $fieldValue)
 		{
 			if(is_array($fieldValue))
